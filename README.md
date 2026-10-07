@@ -1,8 +1,10 @@
 # ⚔️ YGO Duel Mode
 
-*It's time to d-d-d-duel!* A personal, for-fun VS Code extension that plays a
-**card draw animation** in a side panel — card rises from below, spins in
-3D, holo-shimmers, and bursts into a shower of stars with a banner.
+*It's time to d-d-d-duel!* A personal, for-fun VS Code / Cursor extension that
+plays a **card draw animation** in a side panel: card rises from below, spins
+in 3D, holo-shimmers, and bursts into a shower of stars with a banner.
+
+![TCG Pulls demo: draws, pack opening, and Pokédex binder](docs/media/tcg-pulls.gif)
 
 Ships with two games you switch between from the Command Palette:
 - **Yu-Gi-Oh** — cards from the free [YGOPRODeck API](https://ygoprodeck.com/api-guide/)
@@ -21,9 +23,24 @@ Each game splits into two collections/tracks:
   landed via a PR are skipped so a merge never pays twice. Separate collection
   from Sandbox.
 
-> Personal project — not published, not distributed. Yu-Gi-Oh art is property of
+> Personal project, not published, not distributed. Yu-Gi-Oh art is property of
 > Konami; Pokémon art is property of Nintendo / The Pokémon Company. This tool
 > only *displays* cards fetched live from public fan APIs for personal use.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/media/tcg-pulls-pull.png" alt="Pulled Nuzleaf card during a pack reveal" width="420" /><br />
+      <em>A pulled card mid-reveal (Nuzleaf)</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/media/tcg-pulls-pokedex.png" alt="Pokédex binder next to the editor" width="420" /><br />
+      <em>The Pokédex binder beside your code</em>
+    </td>
+  </tr>
+</table>
 
 ## Install (from a `.vsix`)
 
@@ -42,7 +59,7 @@ prices" below.
 
 ## Run it from source (no build needed)
 
-1. Open this folder in VS Code: `code C:\Users\vakitsi\Desktop\ygo-duel`
+1. Open this folder in VS Code: `code C:\Users\vakitsi\Desktop\tcg-pulls`
 2. Press **F5** (Run → Start Debugging). A second VS Code window
    ("Extension Development Host") launches with the extension loaded.
 3. In that window, open the Command Palette (**Ctrl+Shift+P**) and run:
@@ -197,7 +214,7 @@ Window**.
 **Option A2 — manual sync (bash).** Same file set, hand-copied:
 
 ```bash
-SRC=~/Desktop/ygo-duel
+SRC=~/Desktop/tcg-pulls
 DST=~/.vscode/extensions/ygo-duel
 mkdir -p "$DST/games" "$DST/media"
 cp "$SRC/extension.js"      "$DST/extension.js"
@@ -219,7 +236,7 @@ directly and you only ever reload the window:
 
 ```bash
 rm -rf ~/.vscode/extensions/ygo-duel
-cmd //c mklink //J "%USERPROFILE%\.vscode\extensions\ygo-duel" "%USERPROFILE%\Desktop\ygo-duel"
+cmd //c mklink //J "%USERPROFILE%\.vscode\extensions\ygo-duel" "%USERPROFILE%\Desktop\tcg-pulls"
 ```
 
 (Developing via **F5** / the Extension Development Host also loads this source
