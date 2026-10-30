@@ -22,6 +22,8 @@ const MAX_REDIRECTS = 3;
  *  until reload. */
 const REQUEST_TIMEOUT_MS = 15000;
 
+const DEFAULT_UA = 'ygo-duel-vscode-extension';
+
 /** GET a URL and parse JSON. Follows up to MAX_REDIRECTS 3xx redirects (fetch
  *  did this for us; https doesn't). Rejects on non-2xx, non-JSON, transport
  *  error, or `timeoutMs` of socket inactivity — the .cause on a TLS failure
@@ -31,7 +33,7 @@ function getJson(url, headers = {}, redirectsLeft = MAX_REDIRECTS, timeoutMs = R
     let u;
     try { u = new URL(url); } catch (err) { reject(err); return; }
     const req = https.request(u, {
-      headers: { 'User-Agent': 'ygo-duel-vscode-extension', Accept: 'application/json', ...headers }
+      headers: { 'User-Agent': DEFAULT_UA, Accept: 'application/json', ...headers }
     }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume(); // drain so the socket frees

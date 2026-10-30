@@ -14,7 +14,7 @@
   "activationEvents": [],
   "main": "./extension.js",
   "scripts": {
-    "test": "node --test packs.test.js"
+    "test": "node --test packs.test.js games.test.js"
   },
   "contributes": {
     "viewsContainers": {
@@ -56,6 +56,14 @@
       {
         "command": "ygoDuel.openPokemon",
         "title": "Cards: Open Pokémon Field"
+      },
+      {
+        "command": "ygoDuel.openRiftbound",
+        "title": "Cards: Open Riftbound Field"
+      },
+      {
+        "command": "ygoDuel.openOnePiece",
+        "title": "Cards: Open One Piece Field"
       },
       {
         "command": "ygoDuel.draw",

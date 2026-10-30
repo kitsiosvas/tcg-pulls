@@ -9,6 +9,7 @@
  */
 
 const { getJson } = require('../http');
+const { getEurUsd, eurUsd } = require('../fx');
 
 const api = 'https://api.pokemontcg.io/v2/cards';
 const MAX_PAGE = 15000; // stay safely under the ~19.5k total-card count
@@ -17,14 +18,9 @@ const MAX_PAGE = 15000; // stay safely under the ~19.5k total-card count
 // and it's forwarded on every request:  const KEY_HEADER = { 'X-Api-Key': '<key>' };
 const KEY_HEADER = {};
 
-// EUR→USD rate for cardmarket fallback prices. Fetched once at module load from
-// the ECB via frankfurter.app; falls back to 1.10 if the request fails.
-let eurUsd = 1.10;
-getJson('https://api.frankfurter.app/latest?from=EUR&to=USD', {})
-  .then(json => { const r = json && json.rates && json.rates.USD; if (r > 0) eurUsd = r; })
-  .catch(() => {});
-
 async function fetchOne() {
+  // Warm EUR→USD before normalize() may need the Cardmarket fallback.
+  await getEurUsd();
   // pokemontcg.io has no "random" endpoint, so grab one card from a random page
   const page = 1 + Math.floor(Math.random() * MAX_PAGE);
   const json = await getJson(api + '?pageSize=1&page=' + page, KEY_HEADER);
@@ -37,6 +33,7 @@ async function fetchOne() {
  *  backfill rarity/price onto cards caught before that data existed. The
  *  by-id endpoint returns a single object under "data", not an array. */
 async function fetchById(id) {
+  await getEurUsd();
   const json = await getJson(api + '/' + encodeURIComponent(id), KEY_HEADER);
   const c = json && json.data;
   if (!c || !c.name) throw new Error('card not found: ' + id);
@@ -52,6 +49,7 @@ async function fetchById(id) {
 const BATCH_PAGE_SIZE = 15;
 const BATCH_REQUESTS = 3;
 async function fetchBatch() {
+  await getEurUsd();
   const maxPage = Math.max(1, Math.floor(MAX_PAGE / BATCH_PAGE_SIZE));
   const pages = Array.from({ length: BATCH_REQUESTS }, () => 1 + Math.floor(Math.random() * maxPage));
   const results = await Promise.all(
@@ -88,7 +86,7 @@ function normalize(c) {
   // averageSellPrice is the next best.
   const cm = c.cardmarket && c.cardmarket.prices;
   const cmEur = cm && (cm.trendPrice > 0 ? cm.trendPrice : cm.averageSellPrice > 0 ? cm.averageSellPrice : null);
-  const cmPrice = cmEur ? Math.round(cmEur * eurUsd * 100) / 100 : null;
+  const cmPrice = cmEur ? Math.round(cmEur * eurUsd() * 100) / 100 : null;
 
   const price = tcgPrice || cmPrice || null;
 

@@ -6,6 +6,8 @@
 
 - **Yu-Gi-Oh**: cards from the free [YGOPRODeck API](https://ygoprodeck.com/api-guide/)
 - **Pokémon**: TCG cards from [pokemontcg.io](https://docs.pokemontcg.io/)
+- **Riftbound**: cards from the free [OpenRift API](https://openrift.app/developers) (no key)
+- **One Piece**: cards from the free [OPTCG API](https://optcgapi.com/documentation) (no key)
 
 **Sandbox** is always free. **Competitive 🏆** pays **1 / 2 / 3** packs for merges and direct pushes of **&lt;20 / 20–199 / 200+** lines. Cards fetch live; if the API is down, you get a heads-up instead of a card.
 
@@ -30,4 +32,4 @@
 
 Handed a `.vsix`? Extensions view → `⋯` → **Install from VSIX…**, then **Developer: Reload Window**.
 
-From source: open this folder, press **F5**, then Command Palette → **Cards: Open Yu-Gi-Oh Field** or **Cards: Open Pokémon Field**. Draw, rip packs, and open the Binder from there.
+From source: open this folder, press **F5**, then Command Palette → **Cards: Open Yu-Gi-Oh Field**, **Pokémon**, **Riftbound**, or **One Piece Field**. Draw, rip packs, and open the Binder from there.
