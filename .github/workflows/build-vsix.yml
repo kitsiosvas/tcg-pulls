@@ -53,9 +53,13 @@ jobs:
           )"
           echo "Previous version: ${OLD_VERSION}"
 
+          DEST="releases/ygo-duel-${NEW_VERSION}.vsix"
           if [ "${OLD_VERSION}" != "${NEW_VERSION}" ]; then
             echo "changed=true" >> "${GITHUB_OUTPUT}"
             echo "Version bumped ${OLD_VERSION} → ${NEW_VERSION} — building VSIX."
+          elif [ ! -f "${DEST}" ]; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo "Version is still ${NEW_VERSION} but ${DEST} is missing — building VSIX."
           else
             echo "changed=false" >> "${GITHUB_OUTPUT}"
             echo "package.json changed but version is still ${NEW_VERSION} — skipping VSIX build."
