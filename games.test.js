@@ -3,7 +3,6 @@ const { describe, it } = require('node:test');
 const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 
 const riftbound = require('./games/riftbound');
 const onepiece = require('./games/onepiece');
@@ -79,82 +78,75 @@ describe('riftbound adapter', () => {
   });
 });
 
-describe('onepiece adapter', () => {
-  it('exports the game-adapter contract plus key/art helpers', () => {
-    for (const k of ['api', 'fetchOne', 'fetchById', 'fetchBatch', 'keep', 'normalize', 'power', 'theme', 'configure', 'hasApiKey', 'persistCard', 'withArt']) {
+describe('onepiece adapter (OPTCG API)', () => {
+  it('exports the game-adapter contract (no API-key helpers)', () => {
+    for (const k of ['api', 'fetchOne', 'fetchById', 'fetchBatch', 'keep', 'normalize', 'power', 'theme']) {
       assert.equal(typeof onepiece[k] !== 'undefined', true, k);
     }
-    assert.match(onepiece.theme.imgHosts, /api\.pokewallet\.io/);
+    assert.match(onepiece.api, /optcgapi\.com/);
+    assert.match(onepiece.theme.imgHosts, /optcgapi\.com/);
+    assert.equal(onepiece.hasApiKey, undefined);
+    assert.equal(onepiece.configure, undefined);
+    assert.equal(onepiece.persistCard, undefined);
+    assert.equal(onepiece.withArt, undefined);
   });
 
-  it('package.json exposes the One Piece API key setting (never hardcoded)', () => {
+  it('package.json has no One Piece API key setting', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
-    const key = manifest.contributes.configuration.properties['ygoDuel.onePiece.apiKey'];
-    assert.equal(key.type, 'string');
-    assert.equal(key.default, '');
-    assert.match(key.description, /PokeWallet/);
+    assert.equal(manifest.contributes.configuration.properties['ygoDuel.onePiece.apiKey'], undefined);
     const cmds = manifest.contributes.commands.map(c => c.command).join(' ');
     assert.match(cmds, /openRiftbound/);
     assert.match(cmds, /openOnePiece/);
   });
 
-  it('keeps cards and drops sealed / DON!!', () => {
-    assert.equal(onepiece.keep({ id: 'op_1', name: 'Zoro', product_type: 'card' }), true);
-    assert.equal(onepiece.keep({ id: 'op_2', name: 'Box', product_type: 'sealed' }), false);
-    assert.equal(onepiece.keep({ id: 'op_3', name: 'DON!!', rarity: 'DON!!' }), false);
+  it('keeps Leaders and Characters; drops Events / DON!!', () => {
+    assert.equal(onepiece.keep({ card_name: 'Zoro', card_type: 'Leader', card_image_id: 'OP01-001' }), true);
+    assert.equal(onepiece.keep({ card_name: 'Nami', card_type: 'Character', card_image_id: 'OP01-016' }), true);
+    assert.equal(onepiece.keep({ card_name: 'Diable Jambe', card_type: 'Event', card_image_id: 'ST01-016' }), false);
+    assert.equal(onepiece.keep({ card_name: 'DON!!', card_type: 'DON!!', card_image_id: 'DON' }), false);
   });
 
-  it('prefers TCGplayer market_price (USD) and falls back to Cardmarket EUR', () => {
-    assert.equal(onepiece._priceFromCard({
-      tcgplayer: { prices: { market_price: 1.76, low_price: 1.2 } },
-      cardmarket: { prices: { trend: 1.7, avg: 1.64 } }
-    }), 1.76);
-
-    const eurOnly = onepiece._priceFromCard({
-      tcgplayer: null,
-      cardmarket: { prices: { trend: 2.0, avg: 1.5 } }
-    });
-    assert.ok(eurOnly > 1.5 && eurOnly < 3.5, 'EUR→USD fallback, got ' + eurOnly);
+  it('prefers market_price and falls back to inventory_price', () => {
+    assert.equal(onepiece._priceFromCard({ market_price: 0.57, inventory_price: 0.56 }), 0.57);
+    assert.equal(onepiece._priceFromCard({ market_price: 0, inventory_price: 2.05 }), 2.05);
+    assert.equal(onepiece._priceFromCard({ market_price: null, inventory_price: null }), null);
   });
 
-  it('normalize maps rarity codes and persistCard strips data-URI art', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'op-test-'));
-    onepiece.configure({ cacheDir: dir });
-
+  it('normalize maps rarity, public image URL, and Parallel-unique ids', () => {
     const raw = {
-      id: 'op_abc123',
-      name: 'Roronoa Zoro',
+      inventory_price: 169.0,
+      market_price: 568.01,
+      card_name: 'Roronoa Zoro (001) (Parallel)',
+      set_name: 'Romance Dawn',
+      set_id: 'OP-01',
       rarity: 'L',
+      card_set_id: 'OP01-001',
+      card_color: 'Red',
       card_type: 'Leader',
-      ext_color: 'Red',
-      ext_power: '5000',
-      ext_cost: null,
-      product_type: 'card',
-      tcgplayer: { prices: { market_price: 2.06 } },
-      cardmarket: { prices: { trend: 1.87 } }
+      card_cost: null,
+      card_power: '5000',
+      card_image_id: 'OP01-001_p1',
+      card_image: 'https://optcgapi.com/media/static/Card_Images/OP01-001_p1.jpg'
     };
     const card = onepiece.normalize(raw);
-    assert.equal(card.id, 'op_abc123');
+    assert.equal(card.id, 'OP01-001_p1');
+    assert.equal(card.name, 'Roronoa Zoro (001) (Parallel)');
     assert.equal(card.rarity, 'Leader');
     assert.equal(card.power, 5000);
     assert.equal(card.attr, 'Red');
-    assert.equal(card.price, 2.06);
-    assert.match(card.image, /api\.pokewallet\.io\/op\/images\/op_abc123/);
-
-    const withData = { ...card, image: 'data:image/png;base64,aaa', imageFull: 'data:image/png;base64,aaa' };
-    const stored = onepiece.persistCard(withData);
-    assert.match(stored.image, /^https:\/\/api\.pokewallet\.io\/op\/images\/op_abc123$/);
+    assert.equal(card.price, 568.01);
+    assert.equal(card.image, 'https://optcgapi.com/media/static/Card_Images/OP01-001_p1.jpg');
     assert.equal(onepiece.power(card), 5000);
   });
 });
 
 describe('extension wires both new games', () => {
-  it('registers riftbound and onepiece in GAMES', () => {
+  it('registers riftbound and onepiece without PokeWallet helpers', () => {
     const host = fs.readFileSync(path.join(__dirname, 'extension.js'), 'utf8');
     assert.match(host, /riftbound: require\('\.\/games\/riftbound'\)/);
     assert.match(host, /onepiece: require\('\.\/games\/onepiece'\)/);
     assert.match(host, /ygoDuel\.openRiftbound/);
     assert.match(host, /ygoDuel\.openOnePiece/);
-    assert.match(host, /persistCard/);
+    assert.doesNotMatch(host, /PokeWallet|onePiece\.apiKey|persistCard|withArt|assertGameReady/);
   });
 });

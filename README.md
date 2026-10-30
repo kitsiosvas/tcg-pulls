@@ -7,7 +7,7 @@
 - **Yu-Gi-Oh**: cards from the free [YGOPRODeck API](https://ygoprodeck.com/api-guide/)
 - **Pokémon**: TCG cards from [pokemontcg.io](https://docs.pokemontcg.io/)
 - **Riftbound**: cards from the free [OpenRift API](https://openrift.app/developers) (no key)
-- **One Piece**: cards from [PokeWallet](https://pokewallet.io/api-docs/one-piece.md) — paste your free API key into Settings → **YGO Duel Mode › One Piece: Api Key**
+- **One Piece**: cards from the free [OPTCG API](https://optcgapi.com/documentation) (no key)
 
 **Sandbox** is always free. **Competitive 🏆** pays **1 / 2 / 3** packs for merges and direct pushes of **&lt;20 / 20–199 / 200+** lines. Cards fetch live; if the API is down, you get a heads-up instead of a card.
 

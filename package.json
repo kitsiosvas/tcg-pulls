@@ -140,11 +140,6 @@
           "enum": ["auto", "tap"],
           "default": "tap",
           "description": "How a single pack's wrapper is opened. tap (default): the pack appears, then tap to rip, then tap each card. auto: the wrapper rips itself after it lands, then tap each card."
-        },
-        "ygoDuel.onePiece.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "PokeWallet API key for One Piece mode (free at https://pokewallet.io). Required — paste your own key; it is never bundled with the extension. Free tier is 100 requests/hour and 1,000/day; card prices are cached locally for a day so opens stay under the limit."
         }
       }
     }

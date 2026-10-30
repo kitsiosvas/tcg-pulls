@@ -82,10 +82,4 @@ function getJson(url, headers = {}, redirectsLeft = MAX_REDIRECTS, timeoutMs = R
   return request(url, { headers, redirectsLeft, timeoutMs, json: true });
 }
 
-/** GET a URL and return raw bytes + content type (for card art that needs an
- *  authenticated download rather than a public CDN URL). */
-function getBuffer(url, headers = {}, redirectsLeft = MAX_REDIRECTS, timeoutMs = REQUEST_TIMEOUT_MS) {
-  return request(url, { headers, redirectsLeft, timeoutMs, json: false });
-}
-
-module.exports = { getJson, getBuffer };
+module.exports = { getJson };
