@@ -24,48 +24,28 @@ const REQUEST_TIMEOUT_MS = 15000;
 
 const DEFAULT_UA = 'ygo-duel-vscode-extension';
 
-/** Low-level GET. `json: true` parses JSON; otherwise returns
- *  `{ buffer, contentType, statusCode }`. Follows up to MAX_REDIRECTS 3xx
- *  redirects (fetch did this for us; https doesn't). Rejects on non-2xx,
- *  non-JSON (when json), transport error, or `timeoutMs` of socket
- *  inactivity — the .cause on a TLS failure carries the real code
- *  (e.g. SELF_SIGNED_CERT_IN_CHAIN). */
-function request(url, { headers = {}, redirectsLeft = MAX_REDIRECTS, timeoutMs = REQUEST_TIMEOUT_MS, json = true } = {}) {
+/** GET a URL and parse JSON. Follows up to MAX_REDIRECTS 3xx redirects (fetch
+ *  did this for us; https doesn't). Rejects on non-2xx, non-JSON, transport
+ *  error, or `timeoutMs` of socket inactivity — the .cause on a TLS failure
+ *  carries the real code (e.g. SELF_SIGNED_CERT_IN_CHAIN). */
+function getJson(url, headers = {}, redirectsLeft = MAX_REDIRECTS, timeoutMs = REQUEST_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     let u;
     try { u = new URL(url); } catch (err) { reject(err); return; }
     const req = https.request(u, {
-      headers: {
-        'User-Agent': DEFAULT_UA,
-        Accept: json ? 'application/json' : '*/*',
-        ...headers
-      }
+      headers: { 'User-Agent': DEFAULT_UA, Accept: 'application/json', ...headers }
     }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume(); // drain so the socket frees
         if (redirectsLeft <= 0) { reject(new Error('too many redirects')); return; }
-        resolve(request(new URL(res.headers.location, u).toString(), {
-          headers, redirectsLeft: redirectsLeft - 1, timeoutMs, json
-        }));
+        resolve(getJson(new URL(res.headers.location, u).toString(), headers, redirectsLeft - 1, timeoutMs));
         return;
       }
-      const chunks = [];
-      res.on('data', chunk => { chunks.push(chunk); });
+      let body = '';
+      res.on('data', chunk => { body += chunk; });
       res.on('end', () => {
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error('HTTP ' + res.statusCode));
-          return;
-        }
-        const buffer = Buffer.concat(chunks);
-        if (!json) {
-          resolve({
-            buffer,
-            contentType: res.headers['content-type'] || 'application/octet-stream',
-            statusCode: res.statusCode
-          });
-          return;
-        }
-        try { resolve(JSON.parse(buffer.toString('utf8'))); }
+        if (res.statusCode < 200 || res.statusCode >= 300) { reject(new Error('HTTP ' + res.statusCode)); return; }
+        try { resolve(JSON.parse(body)); }
         catch (err) { reject(new Error('non-JSON response: ' + err.message)); }
       });
     });
@@ -75,11 +55,6 @@ function request(url, { headers = {}, redirectsLeft = MAX_REDIRECTS, timeoutMs =
     req.setTimeout(timeoutMs, () => req.destroy(new Error('timeout after ' + timeoutMs + 'ms')));
     req.end();
   });
-}
-
-/** GET a URL and parse JSON. */
-function getJson(url, headers = {}, redirectsLeft = MAX_REDIRECTS, timeoutMs = REQUEST_TIMEOUT_MS) {
-  return request(url, { headers, redirectsLeft, timeoutMs, json: true });
 }
 
 module.exports = { getJson };

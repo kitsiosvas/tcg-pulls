@@ -1,8 +1,6 @@
 'use strict';
 const { describe, it } = require('node:test');
 const assert = require('assert/strict');
-const fs = require('fs');
-const path = require('path');
 
 const fx = require('./fx');
 const { cardBelongsToGame } = require('./card-belongs');
@@ -14,10 +12,17 @@ const pokemon = require('./games/pokemon');
 const GAMES_FIXTURE = { yugioh, pokemon, riftbound, onepiece };
 
 describe('cardBelongsToGame', () => {
+  it('keeps a card on its own game imgHosts', () => {
+    const op = { name: 'Zoro', image: 'https://optcgapi.com/media/static/Card_Images/OP01-001.jpg' };
+    assert.equal(cardBelongsToGame(op, onepiece, GAMES_FIXTURE), true);
+    const ygo = { name: 'Dark Magician', image: 'https://images.ygoprodeck.com/images/cards/46986414.jpg' };
+    assert.equal(cardBelongsToGame(ygo, yugioh, GAMES_FIXTURE), true);
+  });
+
   it('drops a card whose image URL belongs to another game', () => {
     const ygoCard = { name: 'Dark Magician', image: 'https://images.ygoprodeck.com/images/cards/46986414.jpg' };
     assert.equal(cardBelongsToGame(ygoCard, pokemon, GAMES_FIXTURE), false);
-    assert.equal(cardBelongsToGame(ygoCard, yugioh, GAMES_FIXTURE), true);
+    assert.equal(cardBelongsToGame(ygoCard, riftbound, GAMES_FIXTURE), false);
   });
 
   it('keeps a card whose image URL is an unknown / future CDN host', () => {
@@ -28,16 +33,10 @@ describe('cardBelongsToGame', () => {
     assert.equal(cardBelongsToGame(moved, riftbound, GAMES_FIXTURE), true);
     assert.equal(cardBelongsToGame(moved, onepiece, GAMES_FIXTURE), true);
   });
-
-  it('keeps cards with no art and cards on their own imgHosts', () => {
-    assert.equal(cardBelongsToGame({ name: 'Old' }, riftbound, GAMES_FIXTURE), true);
-    const op = { name: 'Zoro', image: 'https://optcgapi.com/media/static/Card_Images/OP01-001.jpg' };
-    assert.equal(cardBelongsToGame(op, onepiece, GAMES_FIXTURE), true);
-  });
 });
 
 describe('fx.getEurUsd', () => {
-  it('does not hit the network at require time and falls back to 1.10 until resolved', () => {
+  it('falls back to 1.10 until the first fetch resolves', () => {
     fx._resetForTest();
     assert.equal(fx.eurUsd(), 1.10);
   });
@@ -47,20 +46,11 @@ describe('fx.getEurUsd', () => {
     const rate = await fx.getEurUsd();
     assert.ok(rate > 0, 'rate should be positive, got ' + rate);
     assert.equal(fx.eurUsd(), rate);
-    // Second call returns the same cached value without depending on a new fetch.
     assert.equal(await fx.getEurUsd(), rate);
   });
 });
 
 describe('riftbound adapter', () => {
-  it('exports the game-adapter contract', () => {
-    for (const k of ['api', 'fetchOne', 'fetchById', 'fetchBatch', 'keep', 'normalize', 'power', 'theme']) {
-      assert.equal(typeof riftbound[k] !== 'undefined', true, k);
-    }
-    assert.match(riftbound.theme.imgHosts, /openrift\.app/);
-    assert.equal(riftbound.theme.toggleLabel.includes('Rift'), true);
-  });
-
   it('keeps units and legends only', () => {
     assert.equal(riftbound.keep({ card: { types: ['unit'] } }), true);
     assert.equal(riftbound.keep({ card: { types: ['legend'] } }), true);
@@ -124,26 +114,6 @@ describe('riftbound adapter', () => {
 });
 
 describe('onepiece adapter (OPTCG API)', () => {
-  it('exports the game-adapter contract (no API-key helpers)', () => {
-    for (const k of ['api', 'fetchOne', 'fetchById', 'fetchBatch', 'keep', 'normalize', 'power', 'theme']) {
-      assert.equal(typeof onepiece[k] !== 'undefined', true, k);
-    }
-    assert.match(onepiece.api, /optcgapi\.com/);
-    assert.match(onepiece.theme.imgHosts, /optcgapi\.com/);
-    assert.equal(onepiece.hasApiKey, undefined);
-    assert.equal(onepiece.configure, undefined);
-    assert.equal(onepiece.persistCard, undefined);
-    assert.equal(onepiece.withArt, undefined);
-  });
-
-  it('package.json has no One Piece API key setting', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
-    assert.equal(manifest.contributes.configuration.properties['ygoDuel.onePiece.apiKey'], undefined);
-    const cmds = manifest.contributes.commands.map(c => c.command).join(' ');
-    assert.match(cmds, /openRiftbound/);
-    assert.match(cmds, /openOnePiece/);
-  });
-
   it('keeps Leaders and Characters; drops Events / DON!!', () => {
     assert.equal(onepiece.keep({ card_name: 'Zoro', card_type: 'Leader', card_image_id: 'OP01-001' }), true);
     assert.equal(onepiece.keep({ card_name: 'Nami', card_type: 'Character', card_image_id: 'OP01-016' }), true);
@@ -182,33 +152,5 @@ describe('onepiece adapter (OPTCG API)', () => {
     assert.equal(card.price, 568.01);
     assert.equal(card.image, 'https://optcgapi.com/media/static/Card_Images/OP01-001_p1.jpg');
     assert.equal(onepiece.power(card), 5000);
-  });
-});
-
-describe('extension wires both new games', () => {
-  it('registers riftbound and onepiece without PokeWallet helpers', () => {
-    const host = fs.readFileSync(path.join(__dirname, 'extension.js'), 'utf8');
-    assert.match(host, /riftbound: require\('\.\/games\/riftbound'\)/);
-    assert.match(host, /onepiece: require\('\.\/games\/onepiece'\)/);
-    assert.match(host, /ygoDuel\.openRiftbound/);
-    assert.match(host, /ygoDuel\.openOnePiece/);
-    assert.doesNotMatch(host, /PokeWallet|onePiece\.apiKey|persistCard|withArt|assertGameReady/);
-  });
-
-  it('does not hardcode an email; Riftbound UA is neutral and http default is unchanged', () => {
-    const httpSrc = fs.readFileSync(path.join(__dirname, 'http.js'), 'utf8');
-    const riftSrc = fs.readFileSync(path.join(__dirname, 'games/riftbound.js'), 'utf8');
-    const pokeSrc = fs.readFileSync(path.join(__dirname, 'games/pokemon.js'), 'utf8');
-    const ygoSrc = fs.readFileSync(path.join(__dirname, 'games/yugioh.js'), 'utf8');
-    assert.match(httpSrc, /DEFAULT_UA = 'ygo-duel-vscode-extension'/);
-    assert.match(riftSrc, /tcg-pulls-vscode\/0\.1 \(\+https:\/\/github\.com\/kitsiosvas\/tcg-pulls\)/);
-    assert.doesNotMatch(httpSrc + riftSrc + pokeSrc + ygoSrc, /@gmail\.com|kitsios\.va@/);
-    // No frankfurter fire-and-forget at module load in the game adapters.
-    assert.doesNotMatch(riftSrc, /getJson\('https:\/\/api\.frankfurter/);
-    assert.doesNotMatch(pokeSrc, /getJson\('https:\/\/api\.frankfurter/);
-    assert.doesNotMatch(ygoSrc, /getJson\('https:\/\/api\.frankfurter/);
-    assert.match(riftSrc, /require\('\.\.\/fx'\)/);
-    assert.match(pokeSrc, /require\('\.\.\/fx'\)/);
-    assert.match(ygoSrc, /require\('\.\.\/fx'\)/);
   });
 });

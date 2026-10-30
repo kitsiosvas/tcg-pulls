@@ -5,14 +5,8 @@
  * description of the adapter + theme.
  *
  * Data source: https://optcgapi.com/documentation — free, no API key.
- *   GET /api/allSets/              — booster set list
- *   GET /api/sets/{set_id}/        — all cards in a set (incl. Parallel arts)
- *   GET /api/sets/card/{card_id}/  — every printing of one card_set_id
- *   GET /api/allSetCards/          — every booster card (cached in memory)
- *   GET /api/allDecks/             — starter deck list
- *   GET /api/allSTCards/           — every starter-deck card (cached in memory)
- *   GET /api/decks/{st_id}/        — cards in one starter deck
- *   GET /api/decks/card/{card_id}/ — starter-deck printing(s) of one card_set_id
+ *   GET /api/allSetCards/  — every booster printing (cached in memory)
+ *   GET /api/allSTCards/   — every starter-deck printing (cached in memory)
  *
  * Prices are USD TCGplayer scrapes (market_price / inventory_price), updated
  * daily. card_image is a public CDN URL the webview can load directly.
@@ -91,25 +85,12 @@ async function fetchBatch(count) {
   return out;
 }
 
-/** Look up one already-known printing by card_image_id (binder id). Falls
- *  back to /sets/card/{card_set_id}/ when the cache is cold or misses. */
+/** Look up one already-known printing by card_image_id (binder id). The
+ *  full booster + starter catalog is loaded first; a miss is not-found. */
 async function fetchById(id) {
   await ensurePool();
-  if (byImageId && byImageId.has(id)) return byImageId.get(id);
-
-  // Parallel arts use OP01-001_p1 — strip the suffix to hit the by-set-id route.
-  const base = String(id).replace(/_p\d+$/i, '');
-  const printings = await getJson(api + '/sets/card/' + encodeURIComponent(base) + '/');
-  const list = Array.isArray(printings) ? printings : [];
-  const hit = list.find(c => c && c.card_image_id === id) || list[0];
-  if (!hit || !hit.card_name) {
-    // Starter-deck-only ids (ST01-016) live under /decks/card/
-    const deckPrintings = await getJson(api + '/decks/card/' + encodeURIComponent(base) + '/').catch(() => []);
-    const dlist = Array.isArray(deckPrintings) ? deckPrintings : [];
-    const dhit = dlist.find(c => c && c.card_image_id === id) || dlist[0];
-    if (!dhit || !dhit.card_name) throw new Error('card not found: ' + id);
-    return dhit;
-  }
+  const hit = byImageId && byImageId.get(id);
+  if (!hit || !hit.card_name) throw new Error('card not found: ' + id);
   return hit;
 }
 
