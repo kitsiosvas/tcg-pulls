@@ -20,7 +20,9 @@ const {
 // module in ./games/ and registering it here; a command switches between them.
 const GAMES = {
   yugioh: require('./games/yugioh'),
-  pokemon: require('./games/pokemon')
+  pokemon: require('./games/pokemon'),
+  riftbound: require('./games/riftbound'),
+  onepiece: require('./games/onepiece')
 };
 const DEFAULT_GAME = 'yugioh';
 
@@ -68,7 +70,7 @@ const lastCardByGame = {};
 function sendRestore() {
   if (!panel) return;
   const c = lastCardByGame[gameId];
-  if (c) panel.webview.postMessage({ type: 'restore', card: c });
+  if (c) panel.webview.postMessage({ type: 'restore', card: presentCard(c) });
 }
 
 /** Switch the active game: reset the buffer, reload any open panels with the
@@ -89,6 +91,10 @@ function setActiveGame(id) {
   game = GAMES[id];
   extCtx.globalState.update(ACTIVE_GAME_KEY, id);
 
+  // One Piece needs a user-supplied PokeWallet key — surface that before the
+  // buffer starts failing every fetch with a generic network warning.
+  if (game.warnMissingKey && game.hasApiKey && !game.hasApiKey()) game.warnMissingKey();
+
   BUFFER.length = 0;   // drop the previous game's cards
   loadBufferCache();   // warm-start this game's buffer from its own cache
   if (panel) {
@@ -98,6 +104,20 @@ function setActiveGame(id) {
   if (binderPanel) binderPanel.webview.html = renderHtml(binderPanel.webview, 'binder.html');
   ensureRefill();
   sendCollection(binderTrack);
+}
+
+/** Games whose art can't sit on a public CDN (authenticated image routes)
+ *  export withArt()/persistCard() so we inline from a disk cache for the
+ *  webview and strip data URIs before writing collections. No-ops for YGO /
+ *  Pokémon / Riftbound. */
+function presentCard(card) {
+  return (game.withArt && card) ? game.withArt(card) : card;
+}
+function presentCards(cards) {
+  return (cards || []).map(presentCard);
+}
+function storeCard(card) {
+  return (game.persistCard && card) ? game.persistCard(card) : card;
 }
 
 class DuelMenuItem extends vscode.TreeItem {
@@ -119,6 +139,8 @@ class DuelMenuProvider {
     return [
       new DuelMenuItem('Open Yu-Gi-Oh Field',     'ygoDuel.openYugioh',          'symbol-misc',    'Open the Yu-Gi-Oh duel field'),
       new DuelMenuItem('Open Pokémon Field',       'ygoDuel.openPokemon',         'symbol-misc',    'Open the Pokémon duel field'),
+      new DuelMenuItem('Open Riftbound Field',     'ygoDuel.openRiftbound',       'symbol-misc',    'Open the Riftbound duel field'),
+      new DuelMenuItem('Open One Piece Field',     'ygoDuel.openOnePiece',        'symbol-misc',    'Open the One Piece duel field'),
       new DuelMenuItem('Draw a Card',              'ygoDuel.draw',                'arrow-right',    'Draw a random card'),
       new DuelMenuItem('Open a Pack',              'ygoDuel.openPack',            'package',        'Open a free booster pack'),
       new DuelMenuItem('Open Competitive Pack',    'ygoDuel.openCompetitivePack', 'star',           'Open a Competitive pack (requires earned credits)'),
@@ -132,6 +154,12 @@ class DuelMenuProvider {
 
 function activate(context) {
   extCtx = context;
+  // Games that cache authenticated art / daily prices on disk (One Piece) get
+  // a per-user storage folder under the extension's globalStorageUri.
+  for (const [id, g] of Object.entries(GAMES)) {
+    if (g.configure) g.configure({ cacheDir: path.join(context.globalStorageUri.fsPath, 'game-cache', id) });
+  }
+
   const savedGame = context.globalState.get(ACTIVE_GAME_KEY);
   gameId = GAMES[savedGame] ? savedGame : DEFAULT_GAME;
   game = GAMES[gameId];
@@ -147,6 +175,8 @@ function activate(context) {
 
     vscode.commands.registerCommand('ygoDuel.openYugioh', () => { setActiveGame('yugioh'); ensurePanel(context); }),
     vscode.commands.registerCommand('ygoDuel.openPokemon', () => { setActiveGame('pokemon'); ensurePanel(context); }),
+    vscode.commands.registerCommand('ygoDuel.openRiftbound', () => { setActiveGame('riftbound'); ensurePanel(context); }),
+    vscode.commands.registerCommand('ygoDuel.openOnePiece', () => { setActiveGame('onepiece'); ensurePanel(context); }),
 
     vscode.commands.registerCommand('ygoDuel.draw', async () => {
       ensurePanel(context);
@@ -333,9 +363,13 @@ async function doDraw() {
   let card;
   try {
     card = await fetchRandomCard();
-  } catch {
+  } catch (err) {
     if (isPackOpenBusy(packSession, packLock)) return;
     if (panel) panel.webview.postMessage({ type: 'fetchFailed' });
+    if (err && err.code === 'MISSING_API_KEY') {
+      // One Piece adapter already toasted the Settings hint via warnMissingKey().
+      return;
+    }
     vscode.window.showWarningMessage("⚠️ Couldn't fetch a card right now — check your connection and try again.");
     return;
   }
@@ -345,13 +379,13 @@ async function doDraw() {
     return;
   }
   const rec = recordCollection(card);
-  const payload = {
+  const payload = presentCard({
     ...card,
     isNew: rec.isNew,
     count: rec.count,
     unique: rec.unique,
     total: rec.total
-  };
+  });
   if (panel) panel.webview.postMessage({ type: 'draw', card: payload });
   sendPrefetch();                     // warm the next card's art in the webview
   if (binderPanel && binderTrack === 'sandbox') sendCollection('sandbox'); // live-update the binder if it's open
@@ -452,7 +486,12 @@ async function backgroundCheckMerges() {
  *  warm those too. */
 function sendPrefetch(extraUrls = []) {
   if (!panel) return;
-  const urls = [...extraUrls, ...BUFFER.map(c => c.image)].filter(Boolean);
+  // withArt() inlines authenticated art as data: URIs so the webview can
+  // paint it without an API key on the <img> request.
+  const urls = [
+    ...extraUrls,
+    ...presentCards(BUFFER).map(c => c && c.image)
+  ].filter(Boolean);
   if (urls.length) panel.webview.postMessage({ type: 'prefetch', urls });
 }
 
@@ -505,12 +544,21 @@ function releasePackLock(gate) {
   postPackLock(false);
 }
 
+/** Inline authenticated art on every card of every pack before the Field sees
+ *  them (no-op for games that serve art from a public CDN). */
+function presentPacks(packs) {
+  if (!packs || !game.withArt) return packs;
+  return packs.map(pack => presentCards(pack));
+}
+
 /** Post a session phase to the Field. `gid` is the game the session belongs
  *  to (default: the active game); a payload for a game that is no longer
  *  active is remembered but not posted — the Field on screen is the other
  *  game's page and must not show it. */
 function postPackSession(payload, gid = gameId) {
-  lastPackPayload = { ...payload, gameId: gid };
+  const body = { ...payload, gameId: gid };
+  if (body.packs) body.packs = presentPacks(body.packs);
+  lastPackPayload = body;
   if (gid !== gameId) return;
   if (panel && fieldReady) panel.webview.postMessage({ type: 'packSession', ...lastPackPayload });
 }
@@ -539,7 +587,7 @@ function replayPackSession() {
         phase: 'ready',
         mode: packSession.mode,
         competitive: packSession.competitive,
-        packs: packSession.packs,
+        packs: presentPacks(packSession.packs),
         autoReveal: packSession.mode === 'play' ? autoReveal : false
       });
     }
@@ -661,14 +709,16 @@ async function openPacks(track = 'sandbox', count = 1, opts = {}) {
       if (epoch !== packEpoch) return;
       if (mode === 'bulk') postPackSession({ phase: 'progress', fetched, total }, gid);
     });
-  } catch {
+  } catch (fetchErr) {
     if (epoch !== packEpoch || gate !== packGate) return;
     packSession = null;
     ripBeforeReady = false;
     releasePackLock(gate);
     postPackSession({ phase: 'failed' }, gid);
     if (panel) panel.webview.postMessage({ type: 'fetchFailed' });
-    vscode.window.showWarningMessage("⚠️ Couldn't fetch cards right now — check your connection and try again.");
+    if (!(fetchErr && fetchErr.code === 'MISSING_API_KEY')) {
+      vscode.window.showWarningMessage("⚠️ Couldn't fetch cards right now — check your connection and try again.");
+    }
     return;
   }
   if (epoch !== packEpoch || gate !== packGate) {
@@ -705,7 +755,7 @@ async function openPacks(track = 'sandbox', count = 1, opts = {}) {
 
   packSession.packs = packs;
   packSession.packCount = packs.length;
-  sendPrefetch(packs.flat().map(c => c.image));
+  sendPrefetch(presentCards(packs.flat()).map(c => c && c.image));
   ensureRefill();
 
   if (mode === 'bulk') {
@@ -859,7 +909,9 @@ function recordCards(cards, track = 'sandbox', gid = gameId) {
   for (const c of cards) {
     // previewed cards carry isNew/unique/total for the reveal UI — don't persist those
     const { isNew, unique, total, ...rest } = c;
-    rec = applyDraw(col, stats, rest);
+    // persistCard() strips inlined data-URI art (One Piece) so globalState
+    // stays small; the disk image cache re-hydrates via withArt() on display.
+    rec = applyDraw(col, stats, storeCard(rest));
   }
   extCtx.globalState.update(collectionKey(track, gid), col);
   extCtx.globalState.update(statsKey(track, gid), stats);
@@ -1061,7 +1113,7 @@ function sendCollection(track) {
   const col = extCtx.globalState.get(collectionKey(track), {});
   const stats = extCtx.globalState.get(statsKey(track), emptyStats());
   binderPanel.webview.postMessage({
-    type: 'collection', track, cards: Object.values(col), stats,
+    type: 'collection', track, cards: presentCards(Object.values(col)), stats,
     credits: github.getCredits(extCtx)
   });
 }
@@ -1117,6 +1169,9 @@ let fetchNeed = 0;
 function cardBelongsToGame(card, g = game) {
   const url = card && card.image;
   if (!url) return true;
+  // Inlined art (authenticated CDNs like PokeWallet) is stored as data: URIs
+  // in the live buffer; persisted collections keep the API host URL instead.
+  if (String(url).startsWith('data:')) return true;
   return String(g.theme.imgHosts || '').split(/\s+/).some(h => h && url.startsWith(h));
 }
 
@@ -1183,9 +1238,15 @@ async function harvest(count) {
   // console output to the main window's console, leaving only the generic
   // "TypeError: fetch failed" wrapper undici throws with no way to see why.
   const onFail = err => { console.error('[ygo-duel] card fetch failed:\n' + util.inspect(err, { depth: 10 })); };
+  let missingKey = null;
+  const note = err => {
+    onFail(err);
+    if (err && err.code === 'MISSING_API_KEY') missingKey = err;
+  };
   const burst = game.fetchBatch
-    ? await game.fetchBatch(count).catch(err => { onFail(err); return []; })
-    : await Promise.all(Array.from({ length: count }, () => game.fetchOne().catch(err => { onFail(err); return null; })));
+    ? await game.fetchBatch(count).catch(err => { note(err); return []; })
+    : await Promise.all(Array.from({ length: count }, () => game.fetchOne().catch(err => { note(err); return null; })));
+  if (missingKey) throw missingKey;
   for (const c of burst) {
     if (c && game.keep(c) && !BUFFER.some(b => b.name === c.name)) {
       BUFFER.push(game.normalize(c));
@@ -1240,6 +1301,7 @@ function ensureRefill(target = BUFFER_TARGET) {
  *  During a bulk fetch the remaining-card count is the refill target, never
  *  a silent default-18 top-up from the splice loop. */
 async function fetchCards(n, onProgress) {
+  assertGameReady();
   const want = Math.max(0, Math.floor(n));
   const out = [];
   while (out.length < want) {
@@ -1278,7 +1340,20 @@ async function fetchCards(n, onProgress) {
  *  after a refill attempt (network down, API rate-limited, etc.) — callers
  *  are responsible for telling the player the fetch failed rather than
  *  handing them a fake card. */
+/** Games that need a user-supplied API key (One Piece) refuse draws/packs up
+ *  front with a typed error so callers can show the Settings hint instead of
+ *  a generic "network failed" toast. */
+function assertGameReady() {
+  if (game.hasApiKey && !game.hasApiKey()) {
+    if (game.warnMissingKey) game.warnMissingKey();
+    const err = new Error('One Piece API key missing — set ygoDuel.onePiece.apiKey in Settings');
+    err.code = 'MISSING_API_KEY';
+    throw err;
+  }
+}
+
 async function fetchRandomCard() {
+  assertGameReady();
   if (BUFFER.length === 0) await ensureRefill();
   if (BUFFER.length === 0) throw new Error('no card available — fetch failed');
   const card = BUFFER.splice(Math.floor(Math.random() * BUFFER.length), 1)[0];
