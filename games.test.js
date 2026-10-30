@@ -4,8 +4,25 @@ const assert = require('assert/strict');
 const fs = require('fs');
 const path = require('path');
 
+const fx = require('./fx');
 const riftbound = require('./games/riftbound');
 const onepiece = require('./games/onepiece');
+
+describe('fx.getEurUsd', () => {
+  it('does not hit the network at require time and falls back to 1.10 until resolved', () => {
+    fx._resetForTest();
+    assert.equal(fx.eurUsd(), 1.10);
+  });
+
+  it('caches a positive rate after the first await', async () => {
+    fx._resetForTest();
+    const rate = await fx.getEurUsd();
+    assert.ok(rate > 0, 'rate should be positive, got ' + rate);
+    assert.equal(fx.eurUsd(), rate);
+    // Second call returns the same cached value without depending on a new fetch.
+    assert.equal(await fx.getEurUsd(), rate);
+  });
+});
 
 describe('riftbound adapter', () => {
   it('exports the game-adapter contract', () => {
@@ -148,5 +165,22 @@ describe('extension wires both new games', () => {
     assert.match(host, /ygoDuel\.openRiftbound/);
     assert.match(host, /ygoDuel\.openOnePiece/);
     assert.doesNotMatch(host, /PokeWallet|onePiece\.apiKey|persistCard|withArt|assertGameReady/);
+  });
+
+  it('does not hardcode an email; Riftbound UA is neutral and http default is unchanged', () => {
+    const httpSrc = fs.readFileSync(path.join(__dirname, 'http.js'), 'utf8');
+    const riftSrc = fs.readFileSync(path.join(__dirname, 'games/riftbound.js'), 'utf8');
+    const pokeSrc = fs.readFileSync(path.join(__dirname, 'games/pokemon.js'), 'utf8');
+    const ygoSrc = fs.readFileSync(path.join(__dirname, 'games/yugioh.js'), 'utf8');
+    assert.match(httpSrc, /DEFAULT_UA = 'ygo-duel-vscode-extension'/);
+    assert.match(riftSrc, /tcg-pulls-vscode\/0\.1 \(\+https:\/\/github\.com\/kitsiosvas\/tcg-pulls\)/);
+    assert.doesNotMatch(httpSrc + riftSrc + pokeSrc + ygoSrc, /@gmail\.com|kitsios\.va@/);
+    // No frankfurter fire-and-forget at module load in the game adapters.
+    assert.doesNotMatch(riftSrc, /getJson\('https:\/\/api\.frankfurter/);
+    assert.doesNotMatch(pokeSrc, /getJson\('https:\/\/api\.frankfurter/);
+    assert.doesNotMatch(ygoSrc, /getJson\('https:\/\/api\.frankfurter/);
+    assert.match(riftSrc, /require\('\.\.\/fx'\)/);
+    assert.match(pokeSrc, /require\('\.\.\/fx'\)/);
+    assert.match(ygoSrc, /require\('\.\.\/fx'\)/);
   });
 });

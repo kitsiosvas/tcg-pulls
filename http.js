@@ -22,7 +22,7 @@ const MAX_REDIRECTS = 3;
  *  until reload. */
 const REQUEST_TIMEOUT_MS = 15000;
 
-const DEFAULT_UA = 'tcg-pulls-vscode/0.1 (kitsios.va@gmail.com)';
+const DEFAULT_UA = 'ygo-duel-vscode-extension';
 
 /** Low-level GET. `json: true` parses JSON; otherwise returns
  *  `{ buffer, contentType, statusCode }`. Follows up to MAX_REDIRECTS 3xx

@@ -10,17 +10,11 @@
  */
 
 const { getJson } = require('../http');
+const { getEurUsd, eurUsd } = require('../fx');
 
 const api = 'https://openrift.app/api/v1';
-const UA = { 'User-Agent': 'tcg-pulls-vscode/0.1 (kitsios.va@gmail.com)' };
+const UA = { 'User-Agent': 'tcg-pulls-vscode/0.1 (+https://github.com/kitsiosvas/tcg-pulls)' };
 const MEDIA = 'https://openrift.app/media/cards/';
-
-// EUR→USD rate for Cardmarket / CardTrader / CardNexus fallback prices.
-// Fetched once at module load; falls back to 1.10 if the request fails.
-let eurUsd = 1.10;
-getJson('https://api.frankfurter.app/latest?from=EUR&to=USD', {})
-  .then(json => { const r = json && json.rates && json.rates.USD; if (r > 0) eurUsd = r; })
-  .catch(() => {});
 
 const RARITY_LABEL = {
   common: 'Common',
@@ -51,9 +45,12 @@ const CATALOG_TTL_MS = 60 * 60 * 1000;
 
 async function ensureCatalog() {
   if (catalog && prices && Date.now() - catalogLoadedAt < CATALOG_TTL_MS) return;
+  // Warm EUR→USD alongside the catalog so EUR market fallbacks in priceUsd()
+  // use a real rate (not the 1.10 standby) by the time normalize() runs.
   const [cat, priceJson] = await Promise.all([
     getJson(api + '/catalog?langs=EN', UA),
-    getJson(api + '/prices', UA)
+    getJson(api + '/prices', UA),
+    getEurUsd()
   ]);
   if (!cat || !cat.cards || !cat.printings) throw new Error('unexpected OpenRift catalog shape');
   catalog = cat;
@@ -130,7 +127,7 @@ function priceUsd(printingId) {
   if (!p) return null;
   if (p.tcgplayer > 0) return Math.round(p.tcgplayer) / 100;
   const eurCents = [p.cardmarket, p.cardtrader, p.cardnexus].find(v => v > 0);
-  if (eurCents > 0) return Math.round((eurCents / 100) * eurUsd * 100) / 100;
+  if (eurCents > 0) return Math.round((eurCents / 100) * eurUsd() * 100) / 100;
   return null;
 }
 

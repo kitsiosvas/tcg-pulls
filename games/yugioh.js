@@ -21,18 +21,14 @@
 
 const util = require('util');
 const { getJson } = require('../http');
+const { getEurUsd, eurUsd } = require('../fx');
 
 const api = 'https://db.ygoprodeck.com/api/v7/randomcard.php';
 const CARDINFO_API = 'https://db.ygoprodeck.com/api/v7/cardinfo.php';
 
-// EUR→USD rate for cardmarket_price conversion. Fetched once at module load;
-// falls back to 1.10 if the request fails.
-let eurUsd = 1.10;
-getJson('https://api.frankfurter.app/latest?from=EUR&to=USD', {})
-  .then(json => { const r = json && json.rates && json.rates.USD; if (r > 0) eurUsd = r; })
-  .catch(() => {});
-
 async function fetchOne() {
+  // Warm EUR→USD before normalize() may need the cardmarket_price fallback.
+  await getEurUsd();
   const json = await getJson(api);
   const c = json && Array.isArray(json.data) ? json.data[0] : json;
   if (!c || !c.name) throw new Error('unexpected API shape');
@@ -56,6 +52,7 @@ let lastChunkAt = 0;
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 async function fetchBatch(count) {
+  await getEurUsd();
   const want = Math.max(1, Math.floor(Number(count) || 0));
   const out = [];
   for (let i = 0; i < want; i += BATCH_CONCURRENCY) {
@@ -79,6 +76,7 @@ async function fetchBatch(count) {
 /** Look up one exact, already-known card by its YGOPRODeck id — used to
  *  backfill rarity/price onto cards caught before that data existed. */
 async function fetchById(id) {
+  await getEurUsd();
   const json = await getJson(CARDINFO_API + '?id=' + encodeURIComponent(id));
   const c = json && Array.isArray(json.data) ? json.data[0] : null;
   if (!c || !c.name) throw new Error('card not found: ' + id);
@@ -106,7 +104,7 @@ function normalize(c) {
   // cached rate; the rest are already USD.
   const p = (c.card_prices && c.card_prices[0]) || {};
   const price = [
-    Number(p.cardmarket_price) * eurUsd,
+    Number(p.cardmarket_price) * eurUsd(),
     Number(p.tcgplayer_price),
     Number(p.ebay_price),
     Number(p.amazon_price),
