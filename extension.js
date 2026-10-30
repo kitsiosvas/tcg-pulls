@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const util = require('util');
 const github = require('./github');
+const { cardBelongsToGame: cardBelongsToGameDef } = require('./card-belongs');
 const {
   PACK_SIZE,
   MAX_BULK_PACKS,
@@ -1115,15 +1116,14 @@ let refillGoal = BUFFER_TARGET;
 // far any refill goal may exceed BUFFER_TARGET — see ensureRefill.
 let fetchNeed = 0;
 
-/** True if a card's art is served from a host this game's CSP allows — i.e. the
- *  card actually belongs to `g` (default: the active game). A card can only ever
- *  be shown or recorded when its host is allowlisted, so a foreign host means a
- *  past cross-game race mis-filed the card. Cards with no art (e.g. old data)
- *  are harmless and kept. */
+/** True if a card may stay in `g`'s collection (default: the active game).
+ *  Cards with no art are kept. A card whose image URL matches another game's
+ *  imgHosts is foreign (cross-game race) and dropped; an unknown / future CDN
+ *  host is kept so a host move by OpenRift or OPTCG doesn't wipe collections.
+ *  CSP imgHosts still gate what the webview can load — this only protects
+ *  stored collections. */
 function cardBelongsToGame(card, g = game) {
-  const url = card && card.image;
-  if (!url) return true;
-  return String(g.theme.imgHosts || '').split(/\s+/).some(h => h && url.startsWith(h));
+  return cardBelongsToGameDef(card, g, GAMES);
 }
 
 /** Load whatever was left in the active game's buffer at the end of last session.

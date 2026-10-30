@@ -5,8 +5,36 @@ const fs = require('fs');
 const path = require('path');
 
 const fx = require('./fx');
+const { cardBelongsToGame } = require('./card-belongs');
 const riftbound = require('./games/riftbound');
 const onepiece = require('./games/onepiece');
+const yugioh = require('./games/yugioh');
+const pokemon = require('./games/pokemon');
+
+const GAMES_FIXTURE = { yugioh, pokemon, riftbound, onepiece };
+
+describe('cardBelongsToGame', () => {
+  it('drops a card whose image URL belongs to another game', () => {
+    const ygoCard = { name: 'Dark Magician', image: 'https://images.ygoprodeck.com/images/cards/46986414.jpg' };
+    assert.equal(cardBelongsToGame(ygoCard, pokemon, GAMES_FIXTURE), false);
+    assert.equal(cardBelongsToGame(ygoCard, yugioh, GAMES_FIXTURE), true);
+  });
+
+  it('keeps a card whose image URL is an unknown / future CDN host', () => {
+    const moved = {
+      name: 'Adaptatron',
+      image: 'https://cdn.example.com/riftbound/cards/adaptatron.webp'
+    };
+    assert.equal(cardBelongsToGame(moved, riftbound, GAMES_FIXTURE), true);
+    assert.equal(cardBelongsToGame(moved, onepiece, GAMES_FIXTURE), true);
+  });
+
+  it('keeps cards with no art and cards on their own imgHosts', () => {
+    assert.equal(cardBelongsToGame({ name: 'Old' }, riftbound, GAMES_FIXTURE), true);
+    const op = { name: 'Zoro', image: 'https://optcgapi.com/media/static/Card_Images/OP01-001.jpg' };
+    assert.equal(cardBelongsToGame(op, onepiece, GAMES_FIXTURE), true);
+  });
+});
 
 describe('fx.getEurUsd', () => {
   it('does not hit the network at require time and falls back to 1.10 until resolved', () => {

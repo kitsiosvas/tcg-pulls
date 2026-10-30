@@ -9,7 +9,10 @@
  *   GET /api/sets/{set_id}/        — all cards in a set (incl. Parallel arts)
  *   GET /api/sets/card/{card_id}/  — every printing of one card_set_id
  *   GET /api/allSetCards/          — every booster card (cached in memory)
- *   GET /api/allDecks/, /api/allSTCards/, /api/decks/{st_id}/ — starters
+ *   GET /api/allDecks/             — starter deck list
+ *   GET /api/allSTCards/           — every starter-deck card (cached in memory)
+ *   GET /api/decks/{st_id}/        — cards in one starter deck
+ *   GET /api/decks/card/{card_id}/ — starter-deck printing(s) of one card_set_id
  *
  * Prices are USD TCGplayer scrapes (market_price / inventory_price), updated
  * daily. card_image is a public CDN URL the webview can load directly.
